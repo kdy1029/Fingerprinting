@@ -6,7 +6,10 @@ import re
 from pathlib import Path
 from typing import Any, Union
 
-from PIL import Image
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 
 try:
     import cv2
@@ -22,7 +25,7 @@ except Exception:
 
 def metric_phash_with_stats(a: Path, b: Path, thresh: int = 30) -> dict[str, Any]:
     """Compute pHash threshold accuracy plus distance summary statistics."""
-    if imagehash is None or np is None:
+    if imagehash is None or np is None or Image is None:
         return {"pHash_acc(%)": float("nan"), "pHash_dist_mean": float("nan"), "pHash_dist_std": float("nan")}
     pairs = _pair_files(a, b)
     if not pairs:
