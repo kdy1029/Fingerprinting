@@ -1,86 +1,117 @@
-# Query-Based Fingerprinting of Text-to-Image Large Language Models
+# Query-Based Fingerprinting of Text-to-Image Models
 
-This repository contains the official implementation of the paper:
+This repository implements a simple pipeline for query-based fingerprinting of text-to-image (T2I) models.
 
-**"Query-Based Fingerprinting of Text-to-Image Large Language Models"**  
-*Saketh Ram Josyabhatla, Junggab Son, Daeyoung Kim*  
-In the 12th IEEE International Conference on Big Data Security on Cloud (IEEE BigDataSecurity 2026), May 2026.
+In this project, **fingerprinting** means generating comparable image sets from known prompts and measuring how similar those sets are. The resulting scores act like a behavioral signature for a model or model variant. The pipeline is useful for comparing base models, fine-tuned models, image-to-image modifications, and prompt-modified outputs.
 
-## Overview
-This project provides a comprehensive framework to fingerprint and evaluate Text-to-Image (T2I) Large Language Models. It generates image sets using base and modified prompt queries across various open-source Diffusers-based T2I models and calculates similarity metrics to establish a reliable fingerprint.
+## Pipeline
 
-The framework computes the following metrics between image sets:
-- Perceptual Hash (pHash) Accuracy
-- Structural Similarity Index Measure (SSIM)
-- HSV Histogram Correlation
-- ORB Feature Matching Inlier Ratio
-- Template Matching
+The workflow has three stages:
 
-## Prerequisites
+1. **Generate** base images from a prompt CSV using several Diffusers models.
+2. **Modify** the query outputs with fine-tuned models, image-to-image generation, or modified prompts.
+3. **Evaluate** paired image folders with similarity metrics:
+   - Perceptual hash accuracy and distance statistics
+   - Structural Similarity Index Measure (SSIM)
+   - HSV histogram correlation
+   - ORB feature matching inlier ratio
+   - Template matching
 
-- Python 3.8+
-- PyTorch (CUDA recommended for faster generation)
-- [Hugging Face Diffusers](https://huggingface.co/docs/diffusers/index)
-- OpenCV, Pillow, numpy, imagehash, scikit-image, tqdm
+The combined score preserves the original weighting used by the project: pHash, SSIM, HSV histogram correlation, and ORB inlier ratio. Template matching is still reported separately.
 
-Install the required dependencies:
-```bash
-pip install torch torchvision torchaudio
-pip install diffusers transformers accelerate
-pip install opencv-python pillow numpy scikit-image imagehash tqdm
+## Project Structure
+
+```text
+.
+├── data/                   # Prompt CSV files
+├── scripts/
+│   └── run_pipeline.py     # Main CLI entrypoint
+├── src/
+│   ├── config.py           # Model IDs, output folders, metric pairs, defaults
+│   ├── generation.py       # Text-to-image and image-to-image generation
+│   ├── io_utils.py         # Prompt loading and CSV writing
+│   └── metrics.py          # pHash, SSIM, HSV, ORB, template matching
+├── main.py                 # Backward-compatible wrapper
+└── requirements.txt
 ```
+
+## Installation
+
+Python 3.8+ is recommended. CUDA is strongly recommended for image generation.
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Install the PyTorch build that matches your system from the official PyTorch selector if the default package is not appropriate for your CUDA version.
 
 ## Usage
 
-The main script is `main.py`. It can perform three primary tasks: Base Generation, Modified Generation, and Metric Calculation.
+Run commands from the repository root.
 
-### 1. Generate Base Images
-Generates images using standard models (e.g., `stable-diffusion-2-1-base`, `waifu-diffusion`, etc.) from the prompts provided in a CSV file.
-
-```bash
-python main.py --do_base --prompts_csv data/1k.csv --max_count 100
-```
-
-### 2. Generate Modified Images
-Generates images using fine-tuned models, img2img pipelines, or modified prompts to test the robustness of the fingerprints.
+### Generate Base Images
 
 ```bash
-python main.py --do_modified --prompts_csv data/1k.csv --modified_prompts_csv data/modified_1k.csv --max_count 100
+python scripts/run_pipeline.py --do_base --prompts_csv data/1k.csv --max_count 100
 ```
 
-### 3. Calculate Metrics
-Evaluates the similarity between different image sets and outputs a comprehensive CSV report.
+### Generate Modified Images
 
 ```bash
-python main.py --do_metrics --csv_out outputs/metrics_results.csv
+python scripts/run_pipeline.py --do_modified --prompts_csv data/1k.csv --modified_prompts_csv data/modified_1k.csv --max_count 100
 ```
 
-### Full Pipeline execution
-You can run all steps at once:
+### Compute Metrics
+
 ```bash
-python main.py --do_base --do_modified --do_metrics --max_count 100
+python scripts/run_pipeline.py --do_metrics --csv_out outputs/metrics_results.csv
 ```
 
-## Arguments
+### Run the Full Pipeline
 
-* `--device`: Device to use (`cuda` or `cpu`). Default is `cuda` if available.
-* `--prompts_csv`: Path to the base prompts CSV file. Default: `data/1k.csv`
-* `--modified_prompts_csv`: Path to the modified prompts CSV file. Default: `data/modified_1k.csv`
-* `--max_count`: Maximum number of prompts to process.
-* `--seed`, `--steps`, `--guidance`: Generation parameters.
-* `--do_base`: Flag to execute base image generation.
-* `--do_modified`: Flag to execute modified image generation.
-* `--do_metrics`: Flag to calculate metrics.
-* `--csv_out`: Output path for the metrics CSV file.
+```bash
+python scripts/run_pipeline.py --do_base --do_modified --do_metrics --max_count 100
+```
 
-## Output Structure
+The original entrypoint still works:
 
-* `outputs/queries/`: Contains generated base image datasets.
-* `outputs/modifiedqueries/`: Contains generated modified image datasets.
-* `outputs/metrics_results.csv`: A combined CSV containing similarity metric scores between compared sets.
+```bash
+python main.py --do_metrics
+```
+
+## CLI Arguments
+
+- `--device`: Device to use. Defaults to `cuda` when PyTorch detects CUDA, otherwise `cpu`.
+- `--prompts_csv`: Base prompt CSV. Default: `data/1k.csv`.
+- `--modified_prompts_csv`: Modified prompt CSV. Default: `data/modified_1k.csv`.
+- `--max_count`: Maximum number of prompts or images to process.
+- `--seed`: Random seed. Default: `1024`.
+- `--steps`: Diffusion inference steps. Default: `30`.
+- `--guidance`: Classifier-free guidance scale. Default: `7.5`.
+- `--phash_thresh`: pHash distance threshold. Default: `30`.
+- `--template_thresh`: Template matching threshold. Default: `0.80`.
+- `--orb_nfeatures`: ORB feature count. Default: `1500`.
+- `--orb_ratio_thresh`: ORB ratio test threshold. Default: `0.7`.
+- `--orb_ransac_reproj`: RANSAC reprojection threshold. Default: `3.0`.
+- `--do_base`: Generate base image sets.
+- `--do_modified`: Generate modified image sets.
+- `--do_metrics`: Compute metrics for configured folder pairs.
+- `--csv_out`: Metrics CSV output path. Default: `outputs/metrics_results.csv`.
+
+## Outputs
+
+- `outputs/queries/`: Base model image folders.
+- `outputs/modifiedqueries/`: Modified image folders.
+- `outputs/metrics_results.csv`: Metric report for configured comparison pairs.
+
+Generated outputs are intentionally not committed. Paths are relative to the repository root so the project can be moved between machines.
 
 ## Citation
-If you use this code or our paper in your research, please cite:
+
+If you use this code or the paper in your research, please cite:
+
 ```bibtex
 @inproceedings{josyabhatla2026query,
   title={Query-Based Fingerprinting of Text-to-Image Large Language Models},
