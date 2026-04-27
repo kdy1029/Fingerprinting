@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-# ===== optional deps (있으면 사용) =====
+# ===== optional deps (use if available) =====
 try:
     import numpy as np
     import cv2
@@ -68,7 +68,7 @@ def make_pipe(repo_id: str, kind: str, device: str, dtype: Optional[torch.dtype]
             pipe = pipe.to(device, torch_dtype=dtype)
         except Exception:
             pipe = pipe.to(device)
-    # 연구 목적: safety checker 비활성 (원하면 주석 해제)
+    # Research purpose: disable safety checker (uncomment if needed)
     if hasattr(pipe, "safety_checker"):
         try:
             pipe.safety_checker = None
@@ -88,7 +88,7 @@ def generate_images(
     guidance: float = 7.5,
 ):
     repo_id, kind = AVAILABLE_MODELS[model_key]
-    # Img2Img가 아닌 일반 파이프
+    # Use standard pipeline if not Img2Img
     if kind == "StableDiffusionImg2ImgPipeline":
         kind = "StableDiffusionPipeline"
     pipe = make_pipe(repo_id, kind, device)
@@ -214,7 +214,7 @@ def metric_hsv_hist_corr(a: Path, b: Path) -> Dict[str, Any]:
         ib = cv2.imread(str(pb))
         if ia is None or ib is None:
             continue
-        # 해상도 통일 후 히스토그램
+        # Unify resolution before computing histogram
         if ia.shape[:2] != ib.shape[:2]:
             ib = cv2.resize(ib, (ia.shape[1], ia.shape[0]), interpolation=cv2.INTER_AREA)
         ha = _hsv_hist(ia); hb = _hsv_hist(ib)
@@ -226,7 +226,7 @@ def metric_hsv_hist_corr(a: Path, b: Path) -> Dict[str, Any]:
     }
 
 def metric_template_match(a: Path, b: Path, thresh: float = 0.80) -> Dict[str, Any]:
-    """TM_CCOEFF_NORMED에서 max값이 임계치 이상인 비율(%)"""
+    """Percentage of max value above threshold in TM_CCOEFF_NORMED"""
     if (cv2 is None) or (np is None):
         return {"Template_match_hit(%)": float("nan"), "Template_thresh": thresh, "Template_samples": 0}
     pairs = _pair_files(a, b)
@@ -239,7 +239,7 @@ def metric_template_match(a: Path, b: Path, thresh: float = 0.80) -> Dict[str, A
         tb = cv2.imread(str(pb), cv2.IMREAD_GRAYSCALE)
         if ta is None or tb is None:
             continue
-        # 템플릿은 더 작은 쪽으로
+        # Use the smaller image as template
         if ta.shape[0]*ta.shape[1] <= tb.shape[0]*tb.shape[1]:
             templ, target = ta, tb
         else:
@@ -261,8 +261,8 @@ def metric_orb_inlier_ratio(
     ransac_reproj: float = 3.0
 ) -> Dict[str, Any]:
     """
-    ORB 키포인트 매칭 + RANSAC 호모그래피 인라이어 비율(%)
-    - 권장: 인라이어 / good_matches 로 보정
+    ORB Keypoint Matching + RANSAC Homography Inlier Ratio (%)
+    - Recommendation: Correct by inliers / good_matches
     """
     if (cv2 is None) or (np is None):
         return {"ORB_inlier_ratio_mean(%)": float("nan"), "ORB_samples": 0}
@@ -280,7 +280,7 @@ def metric_orb_inlier_ratio(
         ib = cv2.imread(str(pb), cv2.IMREAD_GRAYSCALE)
         if ia is None or ib is None:
             continue
-        # 크기 차이 보정
+        # Size difference correction
         if ia.shape != ib.shape:
             ib = cv2.resize(ib, (ia.shape[1], ia.shape[0]), interpolation=cv2.INTER_AREA)
 
@@ -304,7 +304,7 @@ def metric_orb_inlier_ratio(
         if mask is None:
             continue
         inliers = int(mask.sum())
-        ratio = 100.0 * inliers / max(1, len(good))  # 분모: good matches
+        ratio = 100.0 * inliers / max(1, len(good))  # Denominator: good matches
         ratios.append(ratio)
         used += 1
 
@@ -317,7 +317,7 @@ def metric_orb_inlier_ratio(
     }
 
 def combined_accuracy_weighted(res: dict) -> float:
-    # 템플릿 매칭은 종합점수에서 제외(노이즈 경향)
+    # Template matching is excluded from overall score (noise tendency)
     weights = {
         "pHash_acc(%)": 0.40,
         "SSIM_mean(%)": 0.35,
@@ -358,7 +358,7 @@ def run_all_metrics(
         # HSV
         hv = metric_hsv_hist_corr(A, B)
         row.update(hv)
-        # Template (참고용)
+        # Template (for reference)
         tm = metric_template_match(A, B, template_thresh)
         row.update(tm)
         # ORB
@@ -383,7 +383,7 @@ def save_results_csv(results: List[Dict[str, Any]], out_path="outputs/metrics_re
         print("⚠️ No results to save.")
         return
 
-    # 고정 컬럼 순서 (CSV 해석 용이)
+    # Fixed column order (easier CSV parsing)
     fieldnames = [
         "A", "B",
         "pHash_acc(%)", "pHash_dist_mean", "pHash_dist_std", "pHash_pairs", "pHash_thresh",
@@ -424,7 +424,7 @@ def main():
 
     ap.add_argument("--do_base", action="store_true")
     ap.add_argument("--do_modified", action="store_true")
-    ap.add_argument("--do_metrics", action="store_true", help="모든 지표 계산")
+    ap.add_argument("--do_metrics", action="store_true", help="Calculate all metrics")
     ap.add_argument("--csv_out", default="outputs/metrics_results.csv",
                     help="CSV output file path")
     args = ap.parse_args()
@@ -433,7 +433,7 @@ def main():
     prompts = load_prompts(Path(args.prompts_csv))
     mod_prompts = load_prompts(Path(args.modified_prompts_csv)) if Path(args.modified_prompts_csv).exists() else prompts
 
-    # 1) 기본 생성
+    # 1) Base generation
     if args.do_base:
         base_sets = [
             ("ldm-text2im-large-256", Path("outputs/queries/ldm-text2im-large-256-images")),
@@ -452,9 +452,9 @@ def main():
             except Exception as e:
                 print(f"[WARN] {key}: {e}")
 
-    # 2) 변형 생성
+    # 2) Modified generation
     if args.do_modified:
-        # fine-tuned 예시
+        # fine-tuned example
         try:
             generate_images(
                 "waifu-diffusers", prompts, Path("outputs/modifiedqueries/Waifu-Diffusers"),
@@ -463,7 +463,7 @@ def main():
         except Exception as e:
             print(f"[WARN] waifu-diffusers: {e}")
 
-        # img2img: realistic-vision 결과를 sd-2-1-base 가이드로 변환
+        # img2img: convert realistic-vision results using sd-2-1-base guide
         src = Path("outputs/queries/Realistic_Vision_V2.0")
         if src.exists() and any(src.glob("*.png")):
             try:
@@ -485,10 +485,10 @@ def main():
         except Exception as e:
             print(f"[WARN] modifiedportraitplus: {e}")
 
-    # 3) 전 지표 계산
+    # 3) Calculate all metrics
     if args.do_metrics:
         pairs = [
-            # 예시 비교쌍
+            # Example comparison pairs
             (Path("outputs/queries/stable-diffusion-2-1-base"), Path("outputs/queries/Realistic_Vision_V2.0")),
             (Path("outputs/modifiedqueries/Waifu-Diffusers"), Path("outputs/queries/waifu-diffusion")),
             (Path("outputs/modifiedqueries/input_modified_base_realistic_gen_stablediff"), Path("outputs/queries/Realistic_Vision_V2.0")),
